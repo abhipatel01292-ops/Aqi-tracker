@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -53,11 +53,11 @@ button {
 <div id="map"></div>
 
 <script>
-// 🔑 YOUR API KEYS
-const AQI_KEY = "YOUR_WAQI_KEY";
-const WEATHER_KEY = "YOUR_OPENWEATHER_KEY";
+// 🔑 YOUR API KEYS (ADDED ✅)
+const AQI_KEY = "ce9f6a5aa540e26f44e07951044d8c9919065ae6";
+const WEATHER_KEY = "395e3ad0f23d50970672953994d988c3";
 
-// 🔥 Supabase config (already added)
+// 🔥 Supabase
 const supabaseUrl = "https://vbrpkrmedneojigctdnl.supabase.co";
 const supabaseKey = "sb_publishable_7sAzY4R_zFP8H7bYLEfF4A_xzezg98i";
 const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
@@ -65,7 +65,7 @@ const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 let map, myMarker, userId = Date.now().toString();
 let markers = {};
 
-// 🗺️ Init Map
+// 🗺️ Map init
 map = L.map('map').setView([20,78], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -74,46 +74,67 @@ function startTracking() {
   navigator.geolocation.watchPosition(updateLocation);
 }
 
-// 🔄 Update your location
+// 🔄 Update location (FIXED VERSION ✅)
 async function updateLocation(pos) {
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
 
-  // Your marker
   if (myMarker) myMarker.setLatLng([lat, lon]);
   else myMarker = L.marker([lat, lon]).addTo(map).bindPopup("You");
 
   map.setView([lat, lon], 12);
 
+  let aqi = "N/A";
+  let city = "Unknown";
+  let temp = "--";
+
   // AQI
-  const aqiRes = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=${AQI_KEY}`);
-  const aqiData = await aqiRes.json();
-  const aqi = aqiData.data.aqi;
+  try {
+    const aqiRes = await fetch(
+      `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${AQI_KEY}`
+    );
+    const aqiData = await aqiRes.json();
+
+    if (aqiData.status === "ok") {
+      aqi = aqiData.data.aqi;
+    }
+  } catch (e) {
+    console.log("AQI error", e);
+  }
 
   // Weather
-  const weatherRes = await fetch(
-    `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_KEY}&units=metric`
-  );
-  const weather = await weatherRes.json();
+  try {
+    const weatherRes = await fetch(
+      `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_KEY}&units=metric`
+    );
+    const weather = await weatherRes.json();
 
-  // Show info
+    city = weather.name;
+    temp = weather.main.temp;
+  } catch (e) {
+    console.log("Weather error", e);
+  }
+
+  // Show data
   document.getElementById("info").innerHTML =
-    `📍 ${weather.name} | 🌡️ ${weather.main.temp}°C | 🌫️ AQI: ${aqi}`;
+    `📍 ${city} | 🌡️ ${temp}°C | 🌫️ AQI: ${aqi}`;
 
   // Save to Supabase
   await supabaseClient.from("visitors").upsert([{
     id: userId,
     latitude: lat,
     longitude: lon,
-    city: weather.name,
+    city: city,
     aqi: aqi,
     updated: new Date().toISOString()
   }]);
 }
 
-// 🌍 LOAD ALL USERS
+// 🌍 Load all users
 async function loadUsers() {
   const { data } = await supabaseClient.from("visitors").select("*");
+
+  if (!data) return;
 
   data.forEach(user => {
     if (!markers[user.id]) {
@@ -126,19 +147,17 @@ async function loadUsers() {
   });
 }
 
-// 🔴 REALTIME UPDATES
+// 🔴 Realtime updates
 supabaseClient
   .channel('realtime visitors')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'visitors' },
-    payload => {
-      loadUsers();
-    })
+    () => loadUsers()
+  )
   .subscribe();
 
-// Refresh every 5 sec
 setInterval(loadUsers, 5000);
 
 </script>
 
 </body>
-</html>
+</html> 
