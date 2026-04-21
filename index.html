@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>🌍 AQI Pro Live Tracker</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+<style>
+body {
+  margin:0;
+  font-family:sans-serif;
+  background:#0f172a;
+  color:white;
+  text-align:center;
+}
+
+h2 { margin:10px; }
+
+button {
+  padding:12px 25px;
+  border:none;
+  border-radius:25px;
+  background:#22c55e;
+  color:white;
+  font-size:16px;
+  cursor:pointer;
+}
+
+#info {
+  margin-top:10px;
+  font-size:18px;
+}
+
+#map {
+  height:400px;
+  margin-top:10px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>🌍 AQI PRO LIVE TRACKER</h2>
+<p>Live AQI + All Visitors Map</p>
+
+<button onclick="startTracking()">📍 Start Tracking</button>
+
+<div id="info">Waiting for data...</div>
+<div id="map"></div>
+
+<script>
+// 🔑 YOUR API KEYS
+const AQI_KEY = "YOUR_WAQI_KEY";
+const WEATHER_KEY = "YOUR_OPENWEATHER_KEY";
+
+// 🔥 Supabase config (already added)
+const supabaseUrl = "https://vbrpkrmedneojigctdnl.supabase.co";
+const supabaseKey = "sb_publishable_7sAzY4R_zFP8H7bYLEfF4A_xzezg98i";
+const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+let map, myMarker, userId = Date.now().toString();
+let markers = {};
+
+// 🗺️ Init Map
+map = L.map('map').setView([20,78], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// 🚀 Start tracking
+function startTracking() {
+  navigator.geolocation.watchPosition(updateLocation);
+}
+
+// 🔄 Update your location
+async function updateLocation(pos) {
+  const lat = pos.coords.latitude;
+  const lon = pos.coords.longitude;
+
+  // Your marker
+  if (myMarker) myMarker.setLatLng([lat, lon]);
+  else myMarker = L.marker([lat, lon]).addTo(map).bindPopup("You");
+
+  map.setView([lat, lon], 12);
+
+  // AQI
+  const aqiRes = await fetch(`https://api.waqi.info/feed/geo:${lat};${lon}/?token=${AQI_KEY}`);
+  const aqiData = await aqiRes.json();
+  const aqi = aqiData.data.aqi;
+
+  // Weather
+  const weatherRes = await fetch(
+    `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_KEY}&units=metric`
+  );
+  const weather = await weatherRes.json();
+
+  // Show info
+  document.getElementById("info").innerHTML =
+    `📍 ${weather.name} | 🌡️ ${weather.main.temp}°C | 🌫️ AQI: ${aqi}`;
+
+  // Save to Supabase
+  await supabaseClient.from("visitors").upsert([{
+    id: userId,
+    latitude: lat,
+    longitude: lon,
+    city: weather.name,
+    aqi: aqi,
+    updated: new Date().toISOString()
+  }]);
+}
+
+// 🌍 LOAD ALL USERS
+async function loadUsers() {
+  const { data } = await supabaseClient.from("visitors").select("*");
+
+  data.forEach(user => {
+    if (!markers[user.id]) {
+      markers[user.id] = L.marker([user.latitude, user.longitude])
+        .addTo(map)
+        .bindPopup(`📍 ${user.city}<br>🌫️ AQI: ${user.aqi}`);
+    } else {
+      markers[user.id].setLatLng([user.latitude, user.longitude]);
+    }
+  });
+}
+
+// 🔴 REALTIME UPDATES
+supabaseClient
+  .channel('realtime visitors')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'visitors' },
+    payload => {
+      loadUsers();
+    })
+  .subscribe();
+
+// Refresh every 5 sec
+setInterval(loadUsers, 5000);
+
+</script>
+
+</body>
+</html>

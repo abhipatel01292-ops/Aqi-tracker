@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Admin Panel - AQI Tracker</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+<style>
+body {
+  margin:0;
+  font-family:sans-serif;
+  background:#020617;
+  color:white;
+  text-align:center;
+}
+
+#map { height:400px; }
+
+#stats {
+  padding:10px;
+  font-size:18px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>📊 ADMIN DASHBOARD</h2>
+<div id="stats">Loading...</div>
+<div id="map"></div>
+
+<script>
+const supabaseUrl = "https://vbrpkrmedneojigctdnl.supabase.co";
+const supabaseKey = "sb_publishable_7sAzY4R_zFP8H7bYLEfF4A_xzezg98i";
+const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+let map = L.map('map').setView([20,78], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let markers = {};
+
+async function loadUsers() {
+  const { data } = await supabaseClient.from("visitors").select("*");
+
+  document.getElementById("stats").innerHTML =
+    `👥 Total Users: ${data.length}`;
+
+  data.forEach(user => {
+    if (!markers[user.id]) {
+      markers[user.id] = L.marker([user.latitude, user.longitude])
+        .addTo(map)
+        .bindPopup(`📍 ${user.city}<br>🌫️ AQI: ${user.aqi}`);
+    } else {
+      markers[user.id].setLatLng([user.latitude, user.longitude]);
+    }
+  });
+}
+
+// realtime
+supabaseClient
+  .channel('admin-live')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'visitors' },
+    payload => {
+      loadUsers();
+    })
+  .subscribe();
+
+loadUsers();
+setInterval(loadUsers, 5000);
+</script>
+
+</body>
+</html>
