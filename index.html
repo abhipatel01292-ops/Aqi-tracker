@@ -44,16 +44,17 @@ button {
 <div id="map"></div>
 
 <script>
-// ✅ KEYS
+// 🔑 API KEYS
 const AQI_KEY = "ce9f6a5aa540e26f44e07951044d8c9919065ae6";
 const WEATHER_KEY = "395e3ad0f23d50970672953994d988c3";
 
-// ✅ Supabase
+// 🔥 Supabase
 const supabase = window.supabase.createClient(
   "https://vbrpkrmedneojigctdnl.supabase.co",
   "sb_publishable_7sAzY4R_zFP8H7bYLEfF4A_xzezg98i"
 );
 
+// 🗺️ Map
 let map = L.map('map').setView([20,78], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
@@ -61,31 +62,39 @@ let myMarker;
 let userId = Date.now().toString();
 let markers = {};
 
-// 🚀 Start tracking (with error handling)
+// 🚀 START TRACKING (FIXED)
 function startTracking() {
-  document.getElementById("info").innerHTML = "Getting location...";
+  document.getElementById("info").innerHTML = "Requesting location...";
 
   if (!navigator.geolocation) {
     alert("Geolocation not supported");
     return;
   }
 
-  navigator.geolocation.watchPosition(
-    updateLocation,
-    (error) => {
-      document.getElementById("info").innerHTML =
-        "❌ Location blocked. Showing demo data.";
-      console.log(error);
+  navigator.geolocation.getCurrentPosition(
+    function (pos) {
+      updateLocation(pos);
 
-      // 🔥 FALLBACK (Lucknow demo)
+      // Start live tracking after permission
+      navigator.geolocation.watchPosition(updateLocation);
+    },
+    function (error) {
+      alert("❌ Please allow location access");
+
+      // fallback demo (Lucknow)
       updateLocation({
         coords: { latitude: 26.85, longitude: 80.95 }
       });
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
     }
   );
 }
 
-// 🔄 Update location
+// 🔄 UPDATE LOCATION
 async function updateLocation(pos) {
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
@@ -127,17 +136,18 @@ async function updateLocation(pos) {
   document.getElementById("info").innerHTML =
     `📍 ${city} | 🌡️ ${temp}°C | 🌫️ AQI: ${aqi}`;
 
+  // 🔥 SAVE TO SUPABASE
   await supabase.from("visitors").upsert([{
     id: userId,
     latitude: lat,
     longitude: lon,
     city: city,
-    aqi: aqi,
+    aqi: parseInt(aqi) || 0,
     updated: new Date().toISOString()
   }]);
 }
 
-// 🌍 Load all users
+// 🌍 LOAD ALL USERS
 async function loadUsers() {
   const { data } = await supabase.from("visitors").select("*");
   if (!data) return;
@@ -153,14 +163,15 @@ async function loadUsers() {
   });
 }
 
-// 🔴 realtime
+// 🔴 REALTIME
 supabase
-  .channel('realtime')
+  .channel('realtime visitors')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'visitors' },
     () => loadUsers()
   )
   .subscribe();
 
+// 🔄 AUTO REFRESH
 setInterval(loadUsers, 5000);
 </script>
 
