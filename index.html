@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
@@ -18,8 +18,6 @@ body {
   text-align:center;
 }
 
-h2 { margin:10px; }
-
 button {
   padding:12px 25px;
   border:none;
@@ -30,15 +28,8 @@ button {
   cursor:pointer;
 }
 
-#info {
-  margin-top:10px;
-  font-size:18px;
-}
-
-#map {
-  height:400px;
-  margin-top:10px;
-}
+#info { margin-top:10px; font-size:18px; }
+#map { height:400px; margin-top:10px; }
 </style>
 </head>
 
@@ -53,28 +44,48 @@ button {
 <div id="map"></div>
 
 <script>
-// 🔑 YOUR API KEYS (ADDED ✅)
+// ✅ KEYS
 const AQI_KEY = "ce9f6a5aa540e26f44e07951044d8c9919065ae6";
 const WEATHER_KEY = "395e3ad0f23d50970672953994d988c3";
 
-// 🔥 Supabase
-const supabaseUrl = "https://vbrpkrmedneojigctdnl.supabase.co";
-const supabaseKey = "sb_publishable_7sAzY4R_zFP8H7bYLEfF4A_xzezg98i";
-const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+// ✅ Supabase
+const supabase = window.supabase.createClient(
+  "https://vbrpkrmedneojigctdnl.supabase.co",
+  "sb_publishable_7sAzY4R_zFP8H7bYLEfF4A_xzezg98i"
+);
 
-let map, myMarker, userId = Date.now().toString();
-let markers = {};
-
-// 🗺️ Map init
-map = L.map('map').setView([20,78], 4);
+let map = L.map('map').setView([20,78], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// 🚀 Start tracking
+let myMarker;
+let userId = Date.now().toString();
+let markers = {};
+
+// 🚀 Start tracking (with error handling)
 function startTracking() {
-  navigator.geolocation.watchPosition(updateLocation);
+  document.getElementById("info").innerHTML = "Getting location...";
+
+  if (!navigator.geolocation) {
+    alert("Geolocation not supported");
+    return;
+  }
+
+  navigator.geolocation.watchPosition(
+    updateLocation,
+    (error) => {
+      document.getElementById("info").innerHTML =
+        "❌ Location blocked. Showing demo data.";
+      console.log(error);
+
+      // 🔥 FALLBACK (Lucknow demo)
+      updateLocation({
+        coords: { latitude: 26.85, longitude: 80.95 }
+      });
+    }
+  );
 }
 
-// 🔄 Update location (FIXED VERSION ✅)
+// 🔄 Update location
 async function updateLocation(pos) {
   const lat = pos.coords.latitude;
   const lon = pos.coords.longitude;
@@ -88,7 +99,6 @@ async function updateLocation(pos) {
   let city = "Unknown";
   let temp = "--";
 
-  // AQI
   try {
     const aqiRes = await fetch(
       `https://api.waqi.info/feed/geo:${lat};${lon}/?token=${AQI_KEY}`
@@ -102,7 +112,6 @@ async function updateLocation(pos) {
     console.log("AQI error", e);
   }
 
-  // Weather
   try {
     const weatherRes = await fetch(
       `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${WEATHER_KEY}&units=metric`
@@ -115,12 +124,10 @@ async function updateLocation(pos) {
     console.log("Weather error", e);
   }
 
-  // Show data
   document.getElementById("info").innerHTML =
     `📍 ${city} | 🌡️ ${temp}°C | 🌫️ AQI: ${aqi}`;
 
-  // Save to Supabase
-  await supabaseClient.from("visitors").upsert([{
+  await supabase.from("visitors").upsert([{
     id: userId,
     latitude: lat,
     longitude: lon,
@@ -132,8 +139,7 @@ async function updateLocation(pos) {
 
 // 🌍 Load all users
 async function loadUsers() {
-  const { data } = await supabaseClient.from("visitors").select("*");
-
+  const { data } = await supabase.from("visitors").select("*");
   if (!data) return;
 
   data.forEach(user => {
@@ -147,17 +153,16 @@ async function loadUsers() {
   });
 }
 
-// 🔴 Realtime updates
-supabaseClient
-  .channel('realtime visitors')
+// 🔴 realtime
+supabase
+  .channel('realtime')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'visitors' },
     () => loadUsers()
   )
   .subscribe();
 
 setInterval(loadUsers, 5000);
-
 </script>
 
 </body>
-</html> 
+</html>
